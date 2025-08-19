@@ -2,8 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
-import 'package:path/path.dart' as p;
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 void main() {
@@ -31,8 +29,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String _status = 'Drag & drop PDFs/folders or click "Browse"';
-  bool _dragging = false;
+  String _status = 'Click "Browse" to select PDFs or folders';
 
   @override
   void initState() {
@@ -51,21 +48,27 @@ class _HomePageState extends State<HomePage> {
     List<String> selectedPaths = [];
 
     try {
-      // On desktop: allow folder picking + multiple files
+      // Try to pick directories first (desktop platforms)
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        FilePickerResult? result = await FilePicker.platform.pickFiles(
-          allowMultiple: true,
-          allowCompression: false,
-          dialogTitle: 'Select PDFs or folders',
-          allowFolderPicker: true,
+        String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
+          dialogTitle: 'Select folder containing PDFs',
         );
-
-        if (result == null) {
-          _setStatus('No files or folders selected.');
-          return;
+        
+        if (selectedDirectory != null) {
+          selectedPaths = [selectedDirectory];
+        } else {
+          // If no directory selected, try file picking
+          FilePickerResult? result = await FilePicker.platform.pickFiles(
+            allowMultiple: true,
+            type: FileType.custom,
+            allowedExtensions: ['pdf'],
+            dialogTitle: 'Select PDF files',
+          );
+          
+          if (result != null) {
+            selectedPaths = result.paths.whereType<String>().toList();
+          }
         }
-
-        selectedPaths = result.paths.whereType<String>().toList();
       } else {
         // On mobile: only files picking
         FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -75,12 +78,14 @@ class _HomePageState extends State<HomePage> {
           dialogTitle: 'Select PDF files',
         );
 
-        if (result == null) {
-          _setStatus('No files selected.');
-          return;
+        if (result != null) {
+          selectedPaths = result.paths.whereType<String>().toList();
         }
-
-        selectedPaths = result.paths.whereType<String>().toList();
+      }
+      
+      if (selectedPaths.isEmpty) {
+        _setStatus('No files or folders selected.');
+        return;
       }
     } catch (e) {
       _setStatus('Error during picking: $e');
@@ -148,11 +153,23 @@ class _HomePageState extends State<HomePage> {
     for (int i = 0; i < document.pages.count; i++) {
       final page = document.pages[i];
       final annotations = page.annotations;
-      annotations.removeWhere(
-          (annotation) => annotation.annotationType == PdfAnnotationType.link);
+      
+      // Create a list of annotations to remove
+      final annotationsToRemove = <PdfAnnotation>[];
+      for (int j = 0; j < annotations.count; j++) {
+        final annotation = annotations[j];
+        if (annotation is PdfLinkAnnotation) {
+          annotationsToRemove.add(annotation);
+        }
+      }
+      
+      // Remove the annotations
+      for (final annotation in annotationsToRemove) {
+        annotations.remove(annotation);
+      }
     }
 
-    final outputBytes = document.save();
+    final outputBytes = await document.save();
     document.dispose();
 
     // Overwrite original file
@@ -165,29 +182,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  Future<void> _handleDrop(List<Uri> uris) async {
-    _setStatus('Processing dropped files/folders...');
-    List<File> filesToClean = [];
-
-    for (var uri in uris) {
-      final path = uri.toFilePath();
-      final type = FileSystemEntity.typeSync(path);
-      if (type == FileSystemEntityType.directory) {
-        filesToClean.addAll(_listPdfsInDir(Directory(path)));
-      } else if (type == FileSystemEntityType.file &&
-          path.toLowerCase().endsWith('.pdf')) {
-        filesToClean.add(File(path));
-      }
-    }
-
-    if (filesToClean.isEmpty) {
-      _setStatus('No PDF files found in dropped items.');
-      return;
-    }
-
-    _setStatus('Cleaning ${filesToClean.length} dropped PDF(s)...');
-    await _cleanMultiplePdfs(filesToClean);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -195,32 +189,28 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('KTU Notes PDF Cleaner'),
       ),
-      body: DesktopDropTarget(
-        onDragEntered: (details) => setState(() => _dragging = true),
-        onDragExited: (details) => setState(() => _dragging = false),
-        onDragDone: (details) {
-          setState(() => _dragging = false);
-          _handleDrop(details.urls);
-        },
-        child: Container(
-          color: _dragging ? Colors.blue.shade100 : Colors.white,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_status,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 18)),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: _pickFilesOrFolders,
-                    child: const Text('Browse PDFs or Folders'),
-                  ),
-                ],
+      body: _buildMainContent(),
+    );
+  }
+
+  Widget _buildMainContent() {
+    return Container(
+      color: Colors.white,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_status,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 18)),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _pickFilesOrFolders,
+                child: const Text('Browse PDFs or Folders'),
               ),
-            ),
+            ],
           ),
         ),
       ),

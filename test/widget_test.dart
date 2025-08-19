@@ -11,20 +11,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ktunotecleaner/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('KTU PDF Cleaner app smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(const KtuPdfCleanerApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify that the app loads with the expected title and button.
+    expect(find.text('KTU Notes PDF Cleaner'), findsOneWidget);
+    expect(find.text('Browse PDFs or Folders'), findsOneWidget);
   });
 }
