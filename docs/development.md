@@ -42,6 +42,40 @@ flutter build windows --release
 flutter build macos --release
 ```
 
+## Local packaging (Fastforge / flutter_distributor)
+
+Fastforge is the new name for flutter_distributor. This repo includes a `distribute_options.yaml` that packages:
+
+- Universal APK
+- Split-per-ABI APKs
+- AAB
+
+Install the CLI and ensure it's on your PATH:
+
+```bash
+# Prefer the new name
+dart pub global activate fastforge
+export PATH="$PATH:$HOME/.pub-cache/bin"
+
+# If you still use the legacy CLI, you can:
+# dart pub global activate flutter_distributor
+# and replace `fastforge` with `flutter_distributor` in the commands below.
+```
+
+Package all Android artifacts defined in `distribute_options.yaml`:
+
+```bash
+fastforge release --name local
+```
+
+Quick one-off without using the config (APK + AAB):
+
+```bash
+fastforge package --platform=android --targets=apk,aab
+```
+
+Outputs are written to `dist/` (gitignored).
+
 ## Code style & linting
 
 - Lints configured via `analysis_options.yaml`.

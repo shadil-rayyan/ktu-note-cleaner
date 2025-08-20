@@ -50,3 +50,6 @@ app.*.map.json
 *.jks
 release.keystore
 keystore.b64
+
+# Distribution artifacts
+/dist/

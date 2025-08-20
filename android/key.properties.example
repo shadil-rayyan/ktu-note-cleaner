@@ -2,7 +2,7 @@
 # Copy this file to android/key.properties and fill in actual values.
 # Keep your real android/key.properties out of git (ensure it's gitignored).
 
-storeFile=android/app/keystore.jks
+storeFile=android/app/release.keystore
 storePassword=your-store-password
-keyAlias=your-key-alias
+keyAlias=your-alias
 keyPassword=your-key-password

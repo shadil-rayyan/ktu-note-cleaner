@@ -1,0 +1,31 @@
+# Fastforge (formerly flutter_distributor) configuration
+# Docs: https://fastforge.dev/getting-started
+
+# Where packaged artifacts will be written
+output: dist/
+
+# Local packaging profile to quickly get APKs/AAB locally
+releases:
+  - name: local
+    jobs:
+      # Universal (fat) APK containing all ABIs
+      - name: android-apk-universal
+        package:
+          platform: android
+          target: apk
+          build_args:
+            target-platform: android-arm,android-arm64,android-x64
+
+      # Split-per-ABI APKs (one APK per ABI)
+      - name: android-apk-split
+        package:
+          platform: android
+          target: apk
+          build_args:
+            split-per-abi: true
+
+      # Android App Bundle
+      - name: android-aab
+        package:
+          platform: android
+          target: aab

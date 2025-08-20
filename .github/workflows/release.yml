@@ -18,33 +18,63 @@ jobs:
       - run: flutter pub get
       - run: flutter test -r compact
       - name: Setup Android signing (optional)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 && secrets.ANDROID_KEYSTORE_PASSWORD && secrets.ANDROID_KEY_ALIAS && secrets.ANDROID_KEY_PASSWORD }}
+        continue-on-error: true
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
           cat > android/key.properties <<EOF
           storeFile=android/app/release.keystore
           storePassword=$ANDROID_KEYSTORE_PASSWORD
           keyAlias=$ANDROID_KEY_ALIAS
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
-      - run: flutter build apk --release
-      - run: flutter build appbundle --release
+      - name: Build Android (attempt signed)
+        id: build_android
+        shell: bash
+        run: |
+          set +e
+          flutter build apk --release
+          STATUS=$?
+          # Try to build AAB as well, but don't fail the step on AAB issues
+          flutter build appbundle --release || true
+          if [ "$STATUS" -eq 0 ]; then
+            echo "signed_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed_ok=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Never fail this step; fallback step will handle unsigned build
+          exit 0
+      - name: Build Android (fallback unsigned if signing failed)
+        if: ${{ steps.build_android.outputs.signed_ok != 'true' }}
+        run: |
+          rm -f android/app/release.keystore android/key.properties || true
+          flutter clean
+          flutter pub get
+          flutter build apk --release
+          flutter build appbundle --release || true
       - name: Prepare artifact
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/ktunotecleaner-${{ github.ref_name }}-android.apk
-          cp build/app/outputs/bundle/release/app-release.aab dist/ktunotecleaner-${{ github.ref_name }}-android.aab || true
+          if [ -f android/key.properties ]; then
+            APK_OUT="ktunotecleaner-${{ github.ref_name }}-android.apk"
+            AAB_OUT="ktunotecleaner-${{ github.ref_name }}-android.aab"
+          else
+            APK_OUT="ktunotecleaner-${{ github.ref_name }}-android-unsigned.apk"
+            AAB_OUT="ktunotecleaner-${{ github.ref_name }}-android-unsigned.aab"
+          fi
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/$APK_OUT"
+          cp build/app/outputs/bundle/release/app-release.aab "dist/$AAB_OUT" || true
       - uses: actions/upload-artifact@v4
         with:
           name: ktunotecleaner-android
           path: |
-            dist/ktunotecleaner-${{ github.ref_name }}-android.apk
-            dist/ktunotecleaner-${{ github.ref_name }}-android.aab
+            dist/ktunotecleaner-${{ github.ref_name }}-android*.apk
+            dist/ktunotecleaner-${{ github.ref_name }}-android*.aab
 
   linux:
     name: Linux x64
@@ -111,7 +141,8 @@ jobs:
       - run: flutter pub get
       - run: flutter build windows --release
       - name: Sign Windows binary (optional)
-        if: ${{ secrets.WIN_CERT_BASE64 != '' }}
+        if: ${{ secrets.WIN_CERT_BASE64 && secrets.WIN_CERT_PASSWORD }}
+        continue-on-error: true
         shell: pwsh
         env:
           WIN_CERT_BASE64: ${{ secrets.WIN_CERT_BASE64 }}
@@ -151,7 +182,7 @@ jobs:
         run: |
           APP="build/macos/Build/Products/Release/ktunotecleaner.app"
           if [ -d "$APP" ]; then
-            codesign --force --deep --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$APP"
+            codesign --force --deep --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$APP" || true
           fi
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}

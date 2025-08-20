@@ -4,6 +4,11 @@
 [![Latest release](https://img.shields.io/github/v/release/shadil-rayyan/ktu-note-cleaner)](https://github.com/shadil-rayyan/ktu-note-cleaner/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/shadil-rayyan/ktu-note-cleaner/total)](https://github.com/shadil-rayyan/ktu-note-cleaner/releases)
 [![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20Linux%20%7C%20Windows%20%7C%20macOS-blue)](#)
+[![License](https://img.shields.io/github/license/shadil-rayyan/ktu-note-cleaner)](./LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/shadil-rayyan/ktu-note-cleaner)](https://github.com/shadil-rayyan/ktu-note-cleaner/commits)
+[![Open issues](https://img.shields.io/github/issues/shadil-rayyan/ktu-note-cleaner)](https://github.com/shadil-rayyan/ktu-note-cleaner/issues)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+[![Flutter](https://img.shields.io/badge/Flutter-stable-blue?logo=flutter)](https://flutter.dev)
 
 Remove clickable links and annotations from PDF notes in one click. Cross‑platform Flutter app for Linux, Windows, macOS, and Android.
 
@@ -79,6 +84,7 @@ Workflow: `.github/workflows/release.yml`
 
 - Android signing via `android/key.properties` (local) or GitHub Secrets (CI):
   - `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
+- Fallback: if signing fails or secrets are missing, an unsigned release build is produced automatically. Android artifacts will be suffixed with `-unsigned`.
 - Artifacts:
   - Android: signed APK + AAB
   - Linux: zip bundle + AppImage

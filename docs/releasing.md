@@ -33,6 +33,10 @@ CI:
   - `ANDROID_KEY_ALIAS`
   - `ANDROID_KEY_PASSWORD`
 
+Fallback behavior:
+
+- The pipeline first attempts a signed build. If signing setup fails or is incomplete, it automatically falls back to an unsigned release build (debug-signed by the default debug key). Artifacts are suffixed with `-unsigned` in that case.
+
 ## Tag a release
 
 ```bash
@@ -46,6 +50,12 @@ Artifacts produced:
 - Linux: zip bundle + AppImage
 - Windows: zip (optional signing)
 - macOS: zip(s) (optional codesign & notarization)
+
+Notes:
+
+- If Android signing fails or secrets are missing, artifacts will be named:
+  - `ktunotecleaner-<tag>-android-unsigned.apk`
+  - `ktunotecleaner-<tag>-android-unsigned.aab`
 
 ## Optional platform signing
 
