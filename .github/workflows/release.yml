@@ -1,0 +1,215 @@
+name: Release Builds
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter test -r compact
+      - name: Setup Android signing (optional)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          cat > android/key.properties <<EOF
+          storeFile=android/app/release.keystore
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+      - run: flutter build apk --release
+      - run: flutter build appbundle --release
+      - name: Prepare artifact
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/ktunotecleaner-${{ github.ref_name }}-android.apk
+          cp build/app/outputs/bundle/release/app-release.aab dist/ktunotecleaner-${{ github.ref_name }}-android.aab || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ktunotecleaner-android
+          path: |
+            dist/ktunotecleaner-${{ github.ref_name }}-android.apk
+            dist/ktunotecleaner-${{ github.ref_name }}-android.aab
+
+  linux:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter --version
+      - run: flutter config --enable-linux-desktop
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - name: Prepare bundle artifact
+        run: |
+          mkdir -p dist
+          (cd build/linux/x64/release && zip -r ../../../../dist/ktunotecleaner-${{ github.ref_name }}-linux-x64.zip bundle)
+      - name: Package AppImage
+        run: |
+          set -euxo pipefail
+          mkdir -p dist/appimage
+          cd dist
+          # Create desktop entry
+          cat > ktunotecleaner.desktop <<'EOD'
+          [Desktop Entry]
+          Type=Application
+          Name=KTU Notes PDF Cleaner
+          Exec=ktunotecleaner
+          Icon=ktunotecleaner
+          Categories=Utility;
+          Terminal=false
+          EOD
+          # Download linuxdeploy
+          curl -L -o linuxdeploy-x86_64.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          # Build AppImage from Flutter bundle
+          APPDIR=$(pwd)/AppDir
+          BUNDLE=../build/linux/x64/release/bundle
+          ./linuxdeploy-x86_64.AppImage --appdir "$APPDIR" -e "$BUNDLE/ktunotecleaner" -d ktunotecleaner.desktop -i ../web/icons/Icon-512.png --output appimage || true
+          # Move AppImage
+          mv *.AppImage ktunotecleaner-${{ github.ref_name }}-linux-x64.AppImage || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ktunotecleaner-linux
+          path: |
+            dist/ktunotecleaner-${{ github.ref_name }}-linux-x64.zip
+            dist/ktunotecleaner-${{ github.ref_name }}-linux-x64.AppImage
+          if-no-files-found: warn
+
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter --version
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Sign Windows binary (optional)
+        if: ${{ secrets.WIN_CERT_BASE64 != '' }}
+        shell: pwsh
+        env:
+          WIN_CERT_BASE64: ${{ secrets.WIN_CERT_BASE64 }}
+          WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+        run: |
+          $certPath = "$env:RUNNER_TEMP\signingCert.pfx"
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WIN_CERT_BASE64))
+          $exe = "build/windows/x64/runner/Release/ktunotecleaner.exe"
+          if (Test-Path $exe) {
+            & "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe" sign /f $certPath /p $env:WIN_CERT_PASSWORD /tr http://timestamp.sectigo.com /td SHA256 /fd SHA256 $exe
+          }
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/ktunotecleaner-${{ github.ref_name }}-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ktunotecleaner-windows
+          path: dist/ktunotecleaner-${{ github.ref_name }}-windows-x64.zip
+
+  macos:
+    name: macOS x64/arm64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter --version
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+      - name: Build macOS arm64
+        run: flutter build macos --release
+      - name: Sign macOS app (optional)
+        if: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
+        run: |
+          APP="build/macos/Build/Products/Release/ktunotecleaner.app"
+          if [ -d "$APP" ]; then
+            codesign --force --deep --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$APP"
+          fi
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      - name: Zip macOS arm64 app
+        run: |
+          mkdir -p dist
+          cd build/macos/Build/Products/Release
+          zip -r ../../../../dist/ktunotecleaner-${{ github.ref_name }}-macos-arm64.zip ktunotecleaner.app
+      - name: Build macOS x86_64 (via Rosetta, optional)
+        run: |
+          sudo softwareupdate --install-rosetta --agree-to-license || true
+          arch -x86_64 flutter build macos --release || true
+      - name: Zip macOS x86_64 app (if built)
+        run: |
+          APP="build/macos/Build/Products/Release/ktunotecleaner.app"
+          if [ -d "$APP" ]; then
+            cd build/macos/Build/Products/Release
+            zip -r ../../../../dist/ktunotecleaner-${{ github.ref_name }}-macos-x86_64.zip ktunotecleaner.app || true
+          fi
+      - name: Notarize macOS app (optional)
+        if: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+        run: |
+          # Notarize arm64 zip
+          xcrun notarytool submit dist/ktunotecleaner-${{ github.ref_name }}-macos-arm64.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" --wait || true
+          # Notarize x86_64 zip if exists
+          if [ -f dist/ktunotecleaner-${{ github.ref_name }}-macos-x86_64.zip ]; then
+            xcrun notarytool submit dist/ktunotecleaner-${{ github.ref_name }}-macos-x86_64.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" --wait || true
+          fi
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ktunotecleaner-macos
+          path: |
+            dist/ktunotecleaner-${{ github.ref_name }}-macos-arm64.zip
+            dist/ktunotecleaner-${{ github.ref_name }}-macos-x86_64.zip
+          if-no-files-found: warn
+
+  # Web job removed for now because current app relies on dart:io for file I/O.
+
+  release:
+    name: Create GitHub Release
+    needs: [android, linux, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -al dist
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
